@@ -22,12 +22,12 @@ int flaot_le(float x, float y){
     unsigned uy = f2u(y);
 
     unsigned sx = ux>>31;
-    unsigned xy = uy>>31;
-
+    unsigned sy = uy>>31;
+    printf("%0x,%0x",ux,uy);
     return 0;
 }
 
 int main(){
-
+    flaot_le(3.1,3.25564684);
     return 0;
 }
