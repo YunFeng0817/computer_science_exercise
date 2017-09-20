@@ -12,7 +12,7 @@ float_bits float_negate(float_bits f){
     unsigned exp = (f&(~INT_MIN))>>23;
     unsigned frac = f&0x7fffff;  //使前23位都为0
 
-    if (exp==0xffff){
+    if (exp==0xff){
         if(frac!=0){
             return f;
         }

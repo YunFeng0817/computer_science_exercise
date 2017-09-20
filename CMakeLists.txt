@@ -3,5 +3,5 @@ project(computer_science_exercise)
 
 set(CMAKE_C_STANDARD 99)
 
-set(SOURCE_FILES 2.92.c)
+set(SOURCE_FILES 2.96.c)
 add_executable(computer_science_exercise ${SOURCE_FILES})
