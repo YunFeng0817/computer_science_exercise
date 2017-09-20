@@ -34,17 +34,17 @@ int float_f2i(float_bits f){
     int exp = (f&(~INT_MIN))>>23;
     unsigned frac = f&0x7fffff;  //使前9位都为0
 
-    if (exp==0xff){
+    if (exp==0xff){  //判断是否为  NAN
         if(frac!=0){
             return 0x80000000;
         }
     }
 
-    if(exp==0)
+    if(exp==0)//处理非规格类型
         exp = (unsigned)1-((1<<7)-1);
     else{
         exp = exp-((1<<7)-1);
-        frac = (frac|0x800000);
+        frac = (frac|0x800000);//在第9位加上默认存在的1
     }
     if(exp<=23)
         frac = (frac&((-1<<(23-exp))))>>(23-exp);
