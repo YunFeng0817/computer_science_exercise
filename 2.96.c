@@ -29,28 +29,30 @@ float u2f(float_bits x){
 
 }
 
-int float_f2i(float_bits f){
-    unsigned sign = f>>31;
-    int exp = (f&(~INT_MIN))>>23;
-    unsigned frac = f&0x7fffff;  //使前9位都为0
+int float_f2i(float_bits uf){
+    unsigned sign = uf>>31;
+    int exp = uf>>23 &0xff;  //移到最低位的一端，然后取出相应的数字
+    unsigned frac = uf&0x7fffff;  //使前9位都为0
 
     if (exp==0xff){  //判断是否为  NAN
-        if(frac!=0){
-            return 0x80000000;
-        }
+        return 0x80000000;
     }
 
     if(exp==0)//处理非规格类型
-        exp = (unsigned)1-((1<<7)-1);
+        exp = 1-((1<<7)-1);
     else{
         exp = exp-((1<<7)-1);
         frac = (frac|0x800000);//在第9位加上默认存在的1
     }
-    if(exp<=23)
+    if(exp<-8)    //由于变量移位大于32位，会自动取余，所以要单独处理
+        frac=0;
+    else if(exp<=23)
         frac = (frac&((-1<<(23-exp))))>>(23-exp);
-    else
+    else if(exp<54)
         frac = frac<<(exp-23);
-    if(sign==1)
+    else
+        return 0x80000000;  //超出了int的最大范围，于是返回 0x80000000u
+    if(sign==1)   //如果是负数，返回补码
         return (~frac)+1;
     return sign<<31|frac;
 }
