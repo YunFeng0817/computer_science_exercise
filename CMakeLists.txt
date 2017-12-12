@@ -3,5 +3,5 @@ project(computer_science_exercise)
 
 set(CMAKE_C_STANDARD 99)
 
-set(SOURCE_FILES Character5/5.18.c)
+set(SOURCE_FILES cacheLab/csim.c cacheLab/cachelab.h)
 add_executable(computer_science_exercise ${SOURCE_FILES})

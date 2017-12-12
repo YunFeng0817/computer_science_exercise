@@ -53,8 +53,13 @@ mem_addr_t set_index_mask;
  */
 void initCache()
 {
- //todo...
-
+    int i;
+    cache =malloc(sizeof(cache_t)*(1<<s));
+    for(i=0;i<S;i++)
+    {
+        cache[i]=malloc(sizeof(cache_line_t)*E);
+        memset(cache[i],0,sizeof(cache_line_t)*E);
+    }
 }
 
 
@@ -63,8 +68,12 @@ void initCache()
  */
 void freeCache()
 {
- //todo...
-
+    int i;
+    for(i=0;i<S;i++)
+    {
+        free(cache[i]);
+    }
+    free(cache);
 }
 
 
@@ -76,8 +85,61 @@ void freeCache()
  */
 void accessData(mem_addr_t addr)
 {
- //todo...
-
+    mem_addr_t min;
+    int i=0,flag;
+    mem_addr_t set,tag;
+    addr=addr>>b;
+    set=addr&(~((~(mem_addr_t)0)<<s)); //对0取反，左移b位，再取反，得到前b位是1，其他是0 的数
+    addr=addr>>s;
+    tag=addr&(~((~(mem_addr_t)0)<<(64-b-s)));
+    flag=0;
+    for(;i<E;i++)
+    {
+        if(cache[set+i]->valid)
+        {
+            if(cache[set+i]->tag==tag)
+            {
+                printf(" hit");
+                flag=1;
+                hit_count++;
+            }
+        }
+    }
+    if(!flag)
+    {
+        printf(" miss");
+        miss_count++;
+        flag=0;
+        for(i=0;i<E;i++)
+        {
+            min=cache[set+i]->lru;
+            if(!cache[set+i]->valid)
+            {
+                cache[set+i]->valid=1;
+                cache[set+i]->tag=tag;
+                cache[set+i]->lru=lru_counter;
+                lru_counter++;
+                flag=1;
+                if(min>cache[set+i]->lru)
+                    min=cache[set+i]->lru;
+            }
+        }
+        if(!flag)
+        {
+            for(i=0;i<E;i++)
+            {
+                if(cache[set+i]->lru==min)
+                {
+                    cache[set+i]->valid=1;
+                    cache[set+i]->tag=tag;
+                    cache[set+i]->lru=lru_counter;
+                    lru_counter++;
+                    printf(" eviction");
+                    eviction_count++;
+                }
+            }
+        }
+    }
 }
 
 
@@ -168,7 +230,6 @@ int main(int argc, char* argv[])
             exit(1);
         }
     }
-
     /* Make sure that all required command line args were specified */
     if (s == 0 || E == 0 || b == 0 || trace_file == NULL) {
         printf("%s: Missing required command line argument\n", argv[0]);
@@ -177,7 +238,8 @@ int main(int argc, char* argv[])
     }
 
     /* Compute S, E and B from command line args */
-    //...
+    S=1<<s;
+    B=1<<b;
  
     /* Initialize cache */
     initCache();
