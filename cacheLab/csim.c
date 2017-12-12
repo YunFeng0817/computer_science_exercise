@@ -54,7 +54,7 @@ mem_addr_t set_index_mask;
 void initCache()
 {
     int i;
-    cache =malloc(sizeof(cache_t)*(1<<s));
+    cache =malloc(sizeof(cache_t)*S);
     for(i=0;i<S;i++)
     {
         cache[i]=malloc(sizeof(cache_line_t)*E);
@@ -95,47 +95,51 @@ void accessData(mem_addr_t addr)
     flag=0;
     for(;i<E;i++)
     {
-        if(cache[set+i]->valid)
+        if(cache[set][i].valid)
         {
-            if(cache[set+i]->tag==tag)
+            if(cache[set][i].tag==tag)
             {
+				cache[set][i].lru=lru_counter;
                 printf(" hit");
                 flag=1;
                 hit_count++;
+				lru_counter++;
+				break;
             }
         }
     }
-    if(!flag)
+    if(flag==0)
     {
         printf(" miss");
         miss_count++;
-        flag=0;
+		min=cache[set][0].lru;
         for(i=0;i<E;i++)
         {
-            min=cache[set+i]->lru;
-            if(!cache[set+i]->valid)
+			if(min>cache[set][i].lru)
+				min=cache[set][i].lru;
+            if(!cache[set][i].valid)
             {
-                cache[set+i]->valid=1;
-                cache[set+i]->tag=tag;
-                cache[set+i]->lru=lru_counter;
+                cache[set][i].valid=1;
+                cache[set][i].tag=tag;
+                cache[set][i].lru=lru_counter;
                 lru_counter++;
                 flag=1;
-                if(min>cache[set+i]->lru)
-                    min=cache[set+i]->lru;
+				break;
             }
         }
-        if(!flag)
+        if(flag==0)
         {
             for(i=0;i<E;i++)
             {
-                if(cache[set+i]->lru==min)
+                if(cache[set][i].lru==min)
                 {
-                    cache[set+i]->valid=1;
-                    cache[set+i]->tag=tag;
-                    cache[set+i]->lru=lru_counter;
+                    cache[set][i].valid=1;
+                    cache[set][i].tag=tag;
+                    cache[set][i].lru=lru_counter;
                     lru_counter++;
                     printf(" eviction");
                     eviction_count++;
+					break;
                 }
             }
         }
