@@ -6,7 +6,7 @@
  *
  * A transpose function is evaluated by counting the number of misses
  * on a 1KB direct mapped cache with a block size of 32 bytes.
- */ 
+ */
 #include <stdio.h>
 #include "cachelab.h"
 
@@ -22,12 +22,89 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
+    int x,y,i,j,temp,z,distance;
+    if(M==32)
+    {
+        distance=8;
+    }
+    else if(M==64)
+    {
+        distance=4;
+    }
+    else
+    {
+        distance=18;
+    }
+    if(M!=61)
+    {
+        for(x=0;x<M;x+=distance)
+        {
+            for(y=0;y<N;y+=distance)
+            {
+                for(i=x;i<x+distance;i++)
+                {
+                    for(j=y;j<y+distance;j++)
+                    {
+                        if(i==j)
+                        {
+                            z=i;
+                            temp=A[i][j];
+                        }
+                        else
+                        {
+                            B[j][i]=A[i][j];
+                        }
+                    }
+                    if(x==y)
+                    {
+                        B[z][z]=temp;
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        for(x=0;x<N;x+=distance)
+        {
+            for(y=0;y<M;y+=distance)
+            {
+                for(i=x;(i<x+distance)&&(i<67);i++)
+                {
+                    for(j=y;(j<y+distance)&&(j<61);j++)
+                    {
+                        if(i==j)
+                        {
+                            z=i;
+                            temp=A[i][j];
+                        }
+                        else
+                        {
+                            B[j][i]=A[i][j];
+                        }
+                    }
+                    if(x==y)
+                    {
+                        B[z][z]=temp;
+                    }
+                }
+            }
+        }
+    }
 }
+
+void transpose32(int M,int N,int A[N][M],int B[M][N])
+{
+
+}
+
+
+
 
 /* 
  * You can define additional transpose functions below. We've defined
  * a simple one below to help you get started. 
- */ 
+ */
 
 /* 
  * trans - A simple baseline transpose function, not optimized for the cache.
@@ -42,7 +119,7 @@ void trans(int M, int N, int A[N][M], int B[M][N])
             tmp = A[i][j];
             B[j][i] = tmp;
         }
-    }    
+    }
 
 }
 
@@ -56,10 +133,10 @@ void trans(int M, int N, int A[N][M], int B[M][N])
 void registerFunctions()
 {
     /* Register your solution function */
-    registerTransFunction(transpose_submit, transpose_submit_desc); 
+    registerTransFunction(transpose_submit, transpose_submit_desc);
 
     /* Register any additional transpose functions */
-    registerTransFunction(trans, trans_desc); 
+    registerTransFunction(trans, trans_desc);
 
 }
 
