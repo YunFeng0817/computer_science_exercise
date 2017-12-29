@@ -398,12 +398,24 @@
  {
 	int status;
 	pid_t p;
-	p=waitpid(-1,&status,WNOHANG);
-	if(p!=-1)
+	while((p=waitpid(-1,&status,WNOHANG|WUNTRACED))>0)
 	{
 		struct job_t* test;
 		test=getjobpid(jobs,p);
-		if(test!=NULL&&test->state!=ST)
+		if(WIFSTOPPED(status))   //这是针对子进程自己给自己发送信号，而父进程无法判断子进程是由于什么信号结束的，进行的判断
+		{
+			if(test)
+			{
+				printf("Job [%d] (%d) stopped by signal %d\n",getjobpid(jobs,p)->jid,p,SIGTSTP);
+				getjobpid(jobs,p)->state=ST;
+			}
+		}
+		else if(WIFSIGNALED(status))
+		{
+			printf("Job [%d] (%d) terminated by signal %d\n",getjobpid(jobs,p)->jid,p,SIGINT);
+			deletejob(jobs,p);
+		}
+		else if(test!=NULL&&test->state!=ST)
 			deletejob(jobs,p);
 	}
 	return;
