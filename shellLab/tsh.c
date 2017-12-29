@@ -306,7 +306,7 @@
 		exit(0);
 	 if(!strcmp(argv[0],"fg")||!strcmp(argv[0],"bg"))
 	 {
-		 do_bgfg(argv[0]);
+		 do_bgfg(argv);
 		 return 1;
 	 }
 	 if(!strcmp(argv[0],"jobs"))
@@ -397,10 +397,15 @@
  void sigchld_handler(int sig) 
  {
 	int status;
-	int p;
-	p=waitpid(-1,&status,WUNTRACED);
-	if(getjobpid(jobs,p)->state!=ST)
-		deletejob(jobs,p);
+	pid_t p;
+	p=waitpid(-1,&status,WNOHANG);
+	if(p!=-1)
+	{
+		struct job_t* test;
+		test=getjobpid(jobs,p);
+		if(test!=NULL&&test->state!=ST)
+			deletejob(jobs,p);
+	}
 	return;
  }
  
