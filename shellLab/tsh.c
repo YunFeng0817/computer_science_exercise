@@ -306,7 +306,7 @@
 		exit(0);
 	 if(!strcmp(argv[0],"fg")||!strcmp(argv[0],"bg"))
 	 {
-		 do_bgfg(argv);
+		 do_bgfg(argv[0]);
 		 return 1;
 	 }
 	 if(!strcmp(argv[0],"jobs"))
@@ -379,10 +379,8 @@
   */
  void waitfg(pid_t pid)
  {
-	 int status;
-	 waitpid(pid,&status,WUNTRACED);
-	 deletejob(jobs,pid);
-	 return;
+	while(fgpid(jobs));
+	return;
  }
  
  /*****************
@@ -398,9 +396,12 @@
   */
  void sigchld_handler(int sig) 
  {
-	 int status;
-	 while(waitpid(-1,&status,WNOHANG)!=-1);
-	 return;
+	int status;
+	int p;
+	p=waitpid(-1,&status,WUNTRACED);
+	if(getjobpid(jobs,p)->state!=ST)
+		deletejob(jobs,p);
+	return;
  }
  
  /* 
@@ -429,7 +430,8 @@
 	int p;
 	if((p=fgpid(jobs))!=0)
 	{
-		printf("Job [%d] (%d) stopped by signal %d",getjobpid(jobs,p)->jid,p,sig);
+		printf("Job [%d] (%d) stopped by signal %d\n",getjobpid(jobs,p)->jid,p,sig);
+		getjobpid(jobs,p)->state=ST;
 		kill(p,sig);
 	}
 	return;
