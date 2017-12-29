@@ -381,7 +381,7 @@
  {
 	 int status;
 	 waitpid(pid,&status,WUNTRACED);
-	 deletejob(job,pid);
+	 deletejob(jobs,pid);
 	 return;
  }
  
@@ -413,6 +413,7 @@
 	int p;
 	if((p=fgpid(jobs))!=0)
 	{
+		printf("Job [%d] (%d) terminated by signal %d\n",getjobpid(jobs,p)->jid,p,sig);
 		kill(p,sig);
 	}
 	return;
@@ -426,8 +427,9 @@
  void sigtstp_handler(int sig) 
  {
 	int p;
-	if((p=fgpid(jobs)!=0))
+	if((p=fgpid(jobs))!=0)
 	{
+		printf("Job [%d] (%d) stopped by signal %d",getjobpid(jobs,p)->jid,p,sig);
 		kill(p,sig);
 	}
 	return;
