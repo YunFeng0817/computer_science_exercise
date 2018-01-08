@@ -67,29 +67,31 @@ team_t team = {
 /* Given block ptr bp, compute address of its header and footer */
 #define HDRP(bp)       ((char *)(bp) - WSIZE)
 #define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
-#define HDRP_UNUSED(bp)       ((char *)(bp) - WSIZE-2*CHILDSIZE)
-#define FTRP_UNUSED(bp)       ((char *)(bp) + GET_SIZE(HDRP_UNUSED(bp)) - DSIZE - 2*CHILDSIZE)
 
 /*Given unused block ptr bp, get address of its left child and right child*/
-#define GET_LCHILD(bp)  ((char *)(bp)+WSIZE+CHILDSIZE)
-#define GET_RCHILD(bp)  ((char *)(bp)+WSIZE+2*CHILDSIZE)
+#define GET_RCHILD(bp)  ((char *)(bp)+CHILDSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
-#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(HDRP(bp))
+#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(HDRP(bp)))
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
-#define NEXT_UNUSED_BLKP(bp)    ((char *)(bp) + GET_SIZE(HDRP_UNUSED(bp))-2*CHILDSIZE)
-#define PREV_UNUSED_BLKP(bp)    ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE-2*CHILDSIZE)))
 
 /* $end mallocmacros */
 
 /* Global variables */
 char *heap_listp;  /* pointer to first block */
-char *root;  /*the root of the tree(unused blocks)*/
+char *root = NULL;  /*the root of the tree(unused blocks)*/
 
 /*Fuction not in head file*/
-void *extend_heap(size_t words);
+static void *extend_heap(size_t words);
 
-/* 
+static void insert(char *tree, char *place);  /*given the length of the clock ,insert it into the tree*/
+static void *delete(char *tree, size_t words);
+
+static void place(void *bp, size_t asize);
+
+static void *coalesce(void *bp);
+
+/*
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
@@ -104,6 +106,12 @@ int mm_init(void) {
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
         return -1;
+    heap_listp += WSIZE;
+    PUT(heap_listp, PACK(CHUNKSIZE / WSIZE, 0));
+    PUT(heap_listp + CHUNKSIZE / WSIZE - WSIZE, PACK(CHUNKSIZE / WSIZE, 0));
+    PUT(heap_listp + DSIZE, 0); /*set the left child to null*/
+    PUT(heap_listp + WSIZE + DSIZE, 0);  /*set the right child to null*/
+    insert(root, heap_listp);
     return 0;
 }
 
@@ -112,20 +120,43 @@ int mm_init(void) {
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
-    if (p == (void *) -1)
+    size_t asize;      /* adjusted block size */
+    size_t extendsize; /* amount to extend heap if no fit */
+    char *bp;
+
+    /* Ignore spurious requests */
+    if (size <= 0)
         return NULL;
-    else {
-        *(size_t *) p = size;
-        return (void *) ((char *) p + SIZE_T_SIZE);
+
+    /* Adjust block size to include overhead and alignment reqs. */
+    if (size <= DSIZE)
+        asize = DSIZE + OVERHEAD;
+    else
+        asize = DSIZE * ((size + (OVERHEAD) + (DSIZE - 1)) / DSIZE);
+
+    if ((bp = delete(root, asize)) != NULL) {
+        place(bp, asize);
+        return bp;
     }
+
+    /* No fit found. Get more memory and place the block */
+    extendsize = MAX(asize, CHUNKSIZE);
+    if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
+        return NULL;
+    place(bp, asize);
+    return bp;
 }
 
 /*
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
+    size_t size = GET_SIZE(HDRP(ptr));
+
+    PUT(HDRP(ptr), PACK(size, 0));
+    PUT(FTRP(ptr), PACK(size, 0));
+    ptr = coalesce(ptr);
+    insert(root, ptr);
 }
 
 /*
@@ -147,6 +178,45 @@ void *mm_realloc(void *ptr, size_t size) {
     return newptr;
 }
 
+void insert(char *tree, char *place) {
+    if (root == NULL) {
+        root = place;
+        return;
+    }
+    if (GET_SIZE(root) > GET_SIZE(HDRP(place))) {
+
+    }
+
+
+}
+
+/*
+ * coalesce - boundary tag coalescing. Return ptr to coalesced block
+ */
+static void *coalesce(void *bp) {
+    /**/
+    return NULL;
+}
+
+/*
+ * place - Place block of asize bytes at start of free block bp
+ *         and split if remainder would be at least minimum block size
+ */
+static void place(void *bp, size_t asize) {
+    size_t csize = GET_SIZE(HDRP(bp));
+
+    if ((csize - asize) > (DSIZE + OVERHEAD)) {
+        PUT(HDRP(bp), PACK(asize, 1));
+        PUT(HDRP(bp) + asize - WSIZE, PACK(asize, 1));
+        bp = bp + asize;
+        PUT(bp, PACK(csize - asize, 0));
+        PUT(bp + csize - asize - WSIZE, PACK(csize - asize, 0));
+        insert(root, bp + WSIZE, csize - asize);
+    } else {
+        PUT(HDRP(bp), PACK(csize, 1));
+        PUT(FTRP(bp), PACK(csize, 1));
+    }
+}
 
 
 
