@@ -65,15 +65,15 @@ team_t team = {
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 /* Given block ptr bp, compute address of its header and footer */
-#define HDRP(bp)       ((char *)(bp) - WSIZE)
-#define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+#define HDRP(bp)       (bp - WSIZE)
+#define FTRP(bp)       (bp + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /*Given unused block ptr bp, get address of its left child and right child*/
 #define GET_RCHILD(bp)  ((char *)(bp)+CHILDSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
-#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(HDRP(bp)))
-#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+#define NEXT_BLKP(bp)  (bp + GET_SIZE(HDRP(bp)))
+#define PREV_BLKP(bp)  (bp - GET_SIZE((bp - DSIZE)))
 
 /* $end mallocmacros */
 
@@ -85,8 +85,8 @@ char *root = NULL;  /*the root of the tree(unused blocks)*/
 static void *extend_heap(size_t words);
 
 static void insert(char *tree, char *place);  /*given the length of the clock ,insert it into the tree*/
-static void *delete(char *tree, size_t words);
-
+static void delete(char *tree, char *point);
+static void *search(char *tree,size_t works);
 static void place(void *bp, size_t asize);
 
 static void *coalesce(void *bp);
@@ -134,7 +134,7 @@ void *mm_malloc(size_t size) {
     else
         asize = DSIZE * ((size + (OVERHEAD) + (DSIZE - 1)) / DSIZE);
 
-    if ((bp = delete(root, asize)) != NULL) {
+    if ((bp = search(root, asize)) != NULL) {
         place(bp, asize);
         return bp;
     }
@@ -170,7 +170,7 @@ void *mm_realloc(void *ptr, size_t size) {
     newptr = mm_malloc(size);
     if (newptr == NULL)
         return NULL;
-    copySize = *(size_t *) ((char *) oldptr - SIZE_T_SIZE);
+    copySize = GET_SIZE(oldptr);
     if (size < copySize)
         copySize = size;
     memcpy(newptr, oldptr, copySize);
@@ -193,9 +193,40 @@ void insert(char *tree, char *place) {
 /*
  * coalesce - boundary tag coalescing. Return ptr to coalesced block
  */
-static void *coalesce(void *bp) {
-    /**/
-    return NULL;
+static void *coalesce(void *ptr) {
+    size_t size;
+    char *pr,*next;
+    pr=PREV_BLKP(ptr);
+    next=NEXT_BLKP(ptr);
+    /*if both behind block and behind block empty,three blocks coalesce*/
+    if(!GET_ALLOC(pr)&&!GET_ALLOC(next))
+    {
+        size=GET_SIZE(ptr)+GET_SIZE(pr)+GET_SIZE(next);
+        delete(root,PREV_BLKP(ptr));
+        PUT(HDRP(pr),PACK(size,0));
+        PUT(FTRP(next),PACK(size,0));
+        insert(root,pr);
+        return pr;
+    }
+    /*only behind block empty,two blocks coalesce*/
+    else if(!GET_ALLOC(pr))
+    {
+        size=GET_SIZE(ptr)+GET_SIZE(pr);
+        delete(root,PREV_BLKP(ptr));
+        PUT(HDRP(pr),PACK(size,0));
+        PUT(FTRP(ptr),PACK(size,0));
+        insert(root,pr);
+        return pr;
+    }
+    /*only behind block empty,two blocks coalesce*/
+    else if(!GET_ALLOC(next)){
+        size=GET_SIZE(ptr)+GET_SIZE(next);
+        delete(root,PREV_BLKP(ptr));
+        PUT(HDRP(ptr),PACK(size,0));
+        PUT(FTRP(next),PACK(size,0));
+        insert(root,ptr);
+    }
+    return ptr;
 }
 
 /*
@@ -211,14 +242,20 @@ static void place(void *bp, size_t asize) {
         bp = bp + asize;
         PUT(bp, PACK(csize - asize, 0));
         PUT(bp + csize - asize - WSIZE, PACK(csize - asize, 0));
-        insert(root, bp + WSIZE, csize - asize);
+        insert(root, bp + WSIZE);
     } else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
 }
 
+void *search(char *tree,size_t works){
+    return NULL;
+}
 
+static void delete(char *tree, char *point){
+
+}
 
 
 
