@@ -69,8 +69,8 @@ team_t team = {
 #define FTRP(bp)       (bp + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /*Given unused block ptr bp, get address of its left child and right child*/
-#define GET_LCHILD(bp)  ((char*)(bp))
-#define GET_RCHILD(bp)  ((char*)(bp+CHILDSIZE))
+#define SET_LCHILD(bp, val)  (*(char*)(bp)=val)
+#define SET_RCHILD(bp, val)  (*(char*)(bp+CHILDSIZE)=val)
 
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp)  (bp + GET_SIZE(HDRP(bp)))
@@ -79,38 +79,28 @@ team_t team = {
 /* $end mallocmacros */
 
 /* Global variables */
-char *heap_listp;  /* pointer to first block */
-char *root = NULL;  /*the root of the tree(unused blocks)*/
+static char *heap_listp;  /* pointer to first block */
+static char *root = NULL;  /*the root of the tree(unused blocks)*/
 
 /*Fuction not in head file*/
 static void *extend_heap(size_t words);
+
 static void insert(char **tree, char *place);  /*given the length of the clock ,insert it into the tree*/
 static void delete(char **tree);
-static void *search(char *tree, size_t works);
+
+static void *search(char **tree, size_t works);
+
 static void place(void *bp, size_t asize);
+
 static void *coalesce(void *ptr);
 
 /*
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
-    if ((heap_listp = mem_sbrk(4 * WSIZE)) == NULL)
-        return -1;
-    PUT(heap_listp, 0);                        /* alignment padding */
-    PUT(heap_listp + WSIZE, PACK(OVERHEAD, 1));  /* prologue header */
-    PUT(heap_listp + DSIZE, PACK(OVERHEAD, 1));  /* prologue footer */
-    PUT(heap_listp + WSIZE + DSIZE, PACK(0, 1));   /* epilogue header */
-    heap_listp += DSIZE;
-
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
+    if ((heap_listp = extend_heap(CHUNKSIZE / WSIZE)) == NULL)
         return -1;
-    heap_listp += WSIZE;
-    PUT(heap_listp, PACK(CHUNKSIZE / WSIZE, 0));
-    PUT(heap_listp + CHUNKSIZE / WSIZE - WSIZE, PACK(CHUNKSIZE / WSIZE, 0));
-    PUT(heap_listp + DSIZE, 0); /*set the left child to null*/
-    PUT(heap_listp + WSIZE + DSIZE, 0);  /*set the right child to null*/
-    insert(&root, heap_listp);
     return 0;
 }
 
@@ -133,7 +123,7 @@ void *mm_malloc(size_t size) {
     else
         asize = DSIZE * ((size + (OVERHEAD) + (DSIZE - 1)) / DSIZE);
 
-    if ((bp = search(root, asize)) != NULL) {
+    if ((bp = search(&root, asize)) != NULL) {
         place(bp, asize);
         return bp;
     }
@@ -155,6 +145,8 @@ void mm_free(void *ptr) {
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
     ptr = coalesce(ptr);
+    SET_LCHILD(ptr, 0);
+    SET_RCHILD(ptr, 0);
     insert(&root, ptr);
 }
 
@@ -184,32 +176,44 @@ void *mm_realloc(void *ptr, size_t size) {
 static void *coalesce(void *ptr) {
     size_t size;
     char *pr, *next;
+    char *temp;
     pr = PREV_BLKP(ptr);
     next = NEXT_BLKP(ptr);
     /*if both behind block and behind block empty,three blocks coalesce*/
-    if (!GET_ALLOC(pr) && !GET_ALLOC(next)) {
+    if (pr > heap_listp && !GET_ALLOC(pr) && !GET_ALLOC(next)) {
         size = GET_SIZE(ptr) + GET_SIZE(pr) + GET_SIZE(next);
-        delete(PREV_BLKP(ptr));
+        temp = PREV_BLKP((char *) ptr);
+        delete(&temp);
+        temp = NEXT_BLKP((char *) ptr);
+        delete(&temp);
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
+        SET_LCHILD(pr, 0);
+        SET_RCHILD(pr, 0);
         insert(&root, pr);
         return pr;
     }
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(pr)) {
         size = GET_SIZE(ptr) + GET_SIZE(pr);
-        delete(PREV_BLKP(ptr));
+        temp = PREV_BLKP((char *) ptr);
+        delete(&temp);
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(ptr), PACK(size, 0));
+        SET_LCHILD(pr, 0);
+        SET_RCHILD(pr, 0);
         insert(&root, pr);
         return pr;
     }
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(next)) {
         size = GET_SIZE(ptr) + GET_SIZE(next);
-        delete(PREV_BLKP(ptr));
+        temp = NEXT_BLKP((char *) ptr);
+        delete(&temp);
         PUT(HDRP(ptr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
+        SET_LCHILD(ptr, 0);
+        SET_RCHILD(ptr, 0);
         insert(&root, ptr);
     }
     return ptr;
@@ -228,7 +232,10 @@ static void place(void *bp, size_t asize) {
         bp = bp + asize;
         PUT(bp, PACK(csize - asize, 0));
         PUT(bp + csize - asize - WSIZE, PACK(csize - asize, 0));
-        insert(&root, bp + WSIZE);
+        SET_LCHILD(bp + WSIZE, 0);
+        SET_RCHILD(bp + WSIZE, 0);
+        bp += WSIZE;
+        insert(&root, bp);
     } else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
@@ -245,16 +252,16 @@ void insert(char **tree, char *place) {
         return;
     }
     if (GET_SIZE(*tree) > GET_SIZE(HDRP(place))) {
-        return insert(tree, place);
-    } else if (GET_SIZE(*root) < GET_SIZE(HDRP(place))) {
-        return insert(tree + CHILDSIZE, place);
+        return insert(*tree, place);
+    } else if (GET_SIZE(*tree) < GET_SIZE(HDRP(place))) {
+        return insert(*tree + CHILDSIZE, place);
     } else {
         flag = !flag;
         switch (flag) {
             case 0:
-                return insert(tree, place);
+                return insert(*tree, place);
             case 1:
-                return insert(tree + WSIZE, place);
+                return insert(*tree + WSIZE, place);
             default:;
         }
     }
@@ -263,31 +270,29 @@ void insert(char **tree, char *place) {
 /*
  * search - Search the specific length unused block in the BST
  */
-void *search(char *tree, size_t works) {
+void *search(char **tree, size_t works) {
     if (*tree == NULL)
         return NULL;
+    if (**tree == NULL) {
+        void *temp;
+        temp=*tree;
+        delete(tree);
+        return temp;
+    }
     if (GET_SIZE(tree) > works) {
-        if(*tree==NULL)
-        {
+        if (*tree == NULL) {
             delete(&tree);
             return tree;
+        } else {
+            return search((char *) *tree, works);
         }
-        else{
-            return search((char*)*tree,works);
-        }
-    }
-    else if(GET_SIZE(tree)<works)
-    {
-        if(*(tree+CHILDSIZE)==NULL)
-        {
+    } else if (GET_SIZE(tree) < works) {
+        if (*(tree + CHILDSIZE) == NULL) {
             return NULL;
+        } else {
+            return search((char *) (*tree + CHILDSIZE), works);
         }
-        else
-        {
-            return search((char*)(*tree+CHILDSIZE),works);
-        }
-    }
-    else{
+    } else {
         delete(&tree);
         return tree;
     }
@@ -297,6 +302,10 @@ void *search(char *tree, size_t works) {
  * delete - Delete the unused block in the BST
  */
 static void delete(char **tree) {
+    if (*tree == root) {
+        *tree = NULL;
+        return;
+    }
     if (**tree == NULL && *(*tree + CHILDSIZE) == NULL) {
         if (*tree == root)
             root = NULL;
@@ -322,6 +331,28 @@ static void delete(char **tree) {
     }
 }
 
+/*
+ * extend_heap - Extend heap with free block and return its block pointer
+ */
+static void *extend_heap(size_t words) {
+    char *bp;
+    size_t size;
+
+    /* Allocate an even number of words to maintain alignment */
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    if ((bp = mem_sbrk(size)) == NULL)
+        return NULL;
+
+    /* Initialize free block header/footer and the epilogue header */
+    bp += WSIZE;
+    PUT(HDRP(bp), PACK(size, 0));         /* free block header */
+    PUT(FTRP(bp), PACK(size, 0));         /* free block footer */
+    PUT(bp, 0);
+    PUT(bp + CHILDSIZE, 0);
+    insert(&root, bp);
+    /* Coalesce if the previous block was free */
+    return bp;
+}
 
 
 
