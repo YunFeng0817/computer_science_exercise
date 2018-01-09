@@ -48,7 +48,7 @@ team_t team = {
 #define WSIZE       4       /* word size (bytes) */
 #define DSIZE       8       /* doubleword size (bytes) */
 #define CHILDSIZE   8       /* the child pointer size */
-#define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<14)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -85,10 +85,10 @@ static char *root = NULL;  /*the root of the tree(unused blocks)*/
 /*Fuction not in head file*/
 static void *extend_heap(size_t words);
 
-static void insert(char **tree, char *place);  /*given the length of the clock ,insert it into the tree*/
+static void insert(char *tree, char *place);  /*given the length of the clock ,insert it into the tree*/
 static void delete(char **tree);
 
-static void *search(char **tree, size_t works);
+static void *search(char *tree, size_t works);
 
 static void place(void *bp, size_t asize);
 
@@ -123,7 +123,7 @@ void *mm_malloc(size_t size) {
     else
         asize = DSIZE * ((size + (OVERHEAD) + (DSIZE - 1)) / DSIZE);
 
-    if ((bp = search(&root, asize)) != NULL) {
+    if ((bp = search(root, asize)) != NULL) {
         place(bp, asize);
         return bp;
     }
@@ -235,7 +235,7 @@ static void place(void *bp, size_t asize) {
         SET_LCHILD(bp + WSIZE, 0);
         SET_RCHILD(bp + WSIZE, 0);
         bp += WSIZE;
-        insert(&root, bp);
+        insert(root, bp);
     } else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
@@ -245,23 +245,35 @@ static void place(void *bp, size_t asize) {
 /*
  * insert - Insert the unused block to the BST
  */
-void insert(char **tree, char *place) {
+void insert(char *tree, char *place) {
     static char flag = 0;
-    if (*tree == NULL) {
-        *tree = place;
-        return;
+    if(root==NULL)
+    {
+        root=place;
+        return ;
     }
     if (GET_SIZE(*tree) > GET_SIZE(HDRP(place))) {
-        return insert(*tree, place);
+        if(*tree==NULL)
+        {
+            *tree=place;
+            return ;
+        }
+        else
+        return insert((char *)*tree, place);
     } else if (GET_SIZE(*tree) < GET_SIZE(HDRP(place))) {
-        return insert(*tree + CHILDSIZE, place);
+        if(*(tree+CHILDSIZE)==NULL)
+        {
+            *(tree+CHILDSIZE)=place;
+            return ;
+        }
+        return insert((char *)*(tree + CHILDSIZE), place);
     } else {
         flag = !flag;
         switch (flag) {
             case 0:
-                return insert(*tree, place);
+                return insert((char *)*tree, place);
             case 1:
-                return insert(*tree + WSIZE, place);
+                return insert((char *)(*tree + WSIZE), place);
             default:;
         }
     }
@@ -270,13 +282,13 @@ void insert(char **tree, char *place) {
 /*
  * search - Search the specific length unused block in the BST
  */
-void *search(char **tree, size_t works) {
-    if (*tree == NULL)
+void *search(char *tree, size_t works) {
+    if (root == NULL)
         return NULL;
-    if (**tree == NULL) {
+    if (*tree == NULL) {
         void *temp;
-        temp=*tree;
-        delete(tree);
+        temp=tree;
+        delete(&tree);
         return temp;
     }
     if (GET_SIZE(tree) > works) {
@@ -303,22 +315,18 @@ void *search(char **tree, size_t works) {
  */
 static void delete(char **tree) {
     if (*tree == root) {
-        *tree = NULL;
+        root = NULL;
         return;
     }
     if (**tree == NULL && *(*tree + CHILDSIZE) == NULL) {
-        if (*tree == root)
-            root = NULL;
-        else {
             *tree = NULL;
-        }
-    } else if (**tree == NULL) {
-        *tree = (char *) *(*tree + CHILDSIZE);
-    } else if (*(*tree + CHILDSIZE) == NULL) {
-        *tree = (char *) **tree;
+    } else if (*tree == NULL) {
+        *tree = (char *) (*tree + CHILDSIZE);
+    } else if ((*tree + CHILDSIZE) == NULL) {
+        *tree = (char *) *tree;
     } else {
         char *pr, *p;
-        pr = p = (char *) *(*tree + CHILDSIZE);
+        pr = p = (char *) (*tree + CHILDSIZE);
         while (*(p + CHILDSIZE)) {
             pr = p;
             p = (char *) *(pr + CHILDSIZE);
@@ -344,12 +352,15 @@ static void *extend_heap(size_t words) {
         return NULL;
 
     /* Initialize free block header/footer and the epilogue header */
-    bp += WSIZE;
-    PUT(HDRP(bp), PACK(size, 0));         /* free block header */
-    PUT(FTRP(bp), PACK(size, 0));         /* free block footer */
+    bp += DSIZE;
+    PUT(HDRP(bp), PACK(size-WSIZE, 0));         /* free block header */
+    PUT(FTRP(bp), PACK(size-WSIZE, 0));         /* free block footer */
     PUT(bp, 0);
     PUT(bp + CHILDSIZE, 0);
-    insert(&root, bp);
+    if(root==NULL)
+        root=bp;
+    else
+        insert(root, bp);
     /* Coalesce if the previous block was free */
     return bp;
 }
