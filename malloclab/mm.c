@@ -84,15 +84,11 @@ char *root = NULL;  /*the root of the tree(unused blocks)*/
 
 /*Fuction not in head file*/
 static void *extend_heap(size_t words);
-
 static void insert(char **tree, char *place);  /*given the length of the clock ,insert it into the tree*/
 static void delete(char **tree);
-
 static void *search(char *tree, size_t works);
-
 static void place(void *bp, size_t asize);
-
-static void *coalesce(void *bp);
+static void *coalesce(void *ptr);
 
 /*
  * mm_init - initialize the malloc package.
@@ -193,7 +189,7 @@ static void *coalesce(void *ptr) {
     /*if both behind block and behind block empty,three blocks coalesce*/
     if (!GET_ALLOC(pr) && !GET_ALLOC(next)) {
         size = GET_SIZE(ptr) + GET_SIZE(pr) + GET_SIZE(next);
-        delete(&root, PREV_BLKP(ptr));
+        delete(PREV_BLKP(ptr));
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
         insert(&root, pr);
@@ -202,7 +198,7 @@ static void *coalesce(void *ptr) {
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(pr)) {
         size = GET_SIZE(ptr) + GET_SIZE(pr);
-        delete(&root, PREV_BLKP(ptr));
+        delete(PREV_BLKP(ptr));
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(ptr), PACK(size, 0));
         insert(&root, pr);
@@ -211,7 +207,7 @@ static void *coalesce(void *ptr) {
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(next)) {
         size = GET_SIZE(ptr) + GET_SIZE(next);
-        delete(&root, PREV_BLKP(ptr));
+        delete(PREV_BLKP(ptr));
         PUT(HDRP(ptr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
         insert(&root, ptr);
@@ -250,66 +246,78 @@ void insert(char **tree, char *place) {
     }
     if (GET_SIZE(*tree) > GET_SIZE(HDRP(place))) {
         return insert(tree, place);
-    }
-    else if(GET_SIZE(*root)<GET_SIZE(HDRP(place))){
-        return insert(tree+CHILDSIZE,place);
-    }
-    else{
-        flag=!flag;
-        switch(flag)
-        {
+    } else if (GET_SIZE(*root) < GET_SIZE(HDRP(place))) {
+        return insert(tree + CHILDSIZE, place);
+    } else {
+        flag = !flag;
+        switch (flag) {
             case 0:
-                return insert(tree,place);
+                return insert(tree, place);
             case 1:
-                return insert(tree+WSIZE,place);
+                return insert(tree + WSIZE, place);
             default:;
         }
     }
-
 }
 
 /*
  * search - Search the specific length unused block in the BST
  */
 void *search(char *tree, size_t works) {
-    return NULL;
+    if (*tree == NULL)
+        return NULL;
+    if (GET_SIZE(tree) > works) {
+        if(*tree==NULL)
+        {
+            delete(&tree);
+            return tree;
+        }
+        else{
+            return search((char*)*tree,works);
+        }
+    }
+    else if(GET_SIZE(tree)<works)
+    {
+        if(*(tree+CHILDSIZE)==NULL)
+        {
+            return NULL;
+        }
+        else
+        {
+            return search((char*)(*tree+CHILDSIZE),works);
+        }
+    }
+    else{
+        delete(&tree);
+        return tree;
+    }
 }
 
 /*
  * delete - Delete the unused block in the BST
  */
 static void delete(char **tree) {
-    if(**tree==NULL&&*(*tree+CHILDSIZE)==NULL)
-    {
-        if(*tree==root)
-            root=NULL;
-        else
-        {
-            *tree=NULL;
+    if (**tree == NULL && *(*tree + CHILDSIZE) == NULL) {
+        if (*tree == root)
+            root = NULL;
+        else {
+            *tree = NULL;
         }
-    }
-    else if(**tree==NULL)
-    {
-        *tree=(char*)*(*tree+CHILDSIZE);
-    }
-    else if(*(*tree+CHILDSIZE)==NULL)
-    {
-        *tree=(char*)**tree;
-    }
-    else
-    {
-        char *pr,*p;
-        pr=p=(char *)*(*tree+CHILDSIZE);
-        while(*(p+CHILDSIZE)){
-            pr=p;
-            p=(char*)*(pr+CHILDSIZE);
+    } else if (**tree == NULL) {
+        *tree = (char *) *(*tree + CHILDSIZE);
+    } else if (*(*tree + CHILDSIZE) == NULL) {
+        *tree = (char *) **tree;
+    } else {
+        char *pr, *p;
+        pr = p = (char *) *(*tree + CHILDSIZE);
+        while (*(p + CHILDSIZE)) {
+            pr = p;
+            p = (char *) *(pr + CHILDSIZE);
         }
-        if(pr!=p)
-        {
-            *pr=*(p+CHILDSIZE);
-        }
-        else{
-            *(*tree+CHILDSIZE)=*(p+CHILDSIZE);
+        if (pr != p) {
+            *pr = *(p + CHILDSIZE);
+        } else {
+            *(*tree + CHILDSIZE) = *(p + CHILDSIZE);
         }
     }
 }
