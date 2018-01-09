@@ -143,7 +143,7 @@ void mm_free(void *ptr) {
     long *temp=(long *)ptr;
     size_t size = GET_SIZE(HDRP(temp));
     SET_LCHILD(temp, 0);
-    SET_RCHILD(temp, 0);
+    PUT(temp+2,0);
     insert(root, temp);
 }
 
@@ -229,7 +229,7 @@ static void place(long *bp, size_t asize) {
         PUT(bp, PACK(csize - asize, 0));
         PUT(bp + csize - asize - WSIZE, PACK(csize - asize, 0));
         SET_LCHILD(bp + WSIZE, 0);
-        SET_RCHILD(bp + WSIZE, 0);
+        PUT(bp + WSIZE+CHILDSIZE, 0);
         bp += WSIZE;
         insert(root, bp);
     } else {
@@ -251,7 +251,7 @@ void insert(long *tree, long *place) {
     if (GET_SIZE(HDRP(tree)) > GET_SIZE(HDRP(place))) {
         if(*tree==NULL)
         {
-            *tree=place;
+            *(long *)tree=(long)place;
             return ;
         }
         else
