@@ -45,10 +45,10 @@ team_t team = {
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 /* Basic constants and macros */
-#define WSIZE       4       /* word size (bytes) */
-#define DSIZE       8       /* doubleword size (bytes) */
+#define WSIZE       8       /* word size (bytes) */
+#define DSIZE       16       /* doubleword size (bytes) */
 #define CHILDSIZE   8       /* the child pointer size */
-#define CHUNKSIZE  (1<<14)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<16)  /* initial heap size (bytes) */
 #define OVERHEAD    8       /* overhead of header and footer (bytes) */
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -69,8 +69,8 @@ team_t team = {
 #define FTRP(bp)       (bp + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /*Given unused block ptr bp, get address of its left child and right child*/
-#define SET_LCHILD(bp, val)  (*(char*)(bp)=val)
-#define SET_RCHILD(bp, val)  (*(char*)(bp+CHILDSIZE)=val)
+#define SET_LCHILD(bp, val)  (*(long*)(bp)=val)
+#define SET_RCHILD(bp, val)  (*(long*)(bp+CHILDSIZE)=val)
 
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp)  (bp + GET_SIZE(HDRP(bp)))
@@ -79,20 +79,20 @@ team_t team = {
 /* $end mallocmacros */
 
 /* Global variables */
-static char *heap_listp;  /* pointer to first block */
-static char *root = NULL;  /*the root of the tree(unused blocks)*/
+static long *heap_listp;  /* pointer to first block */
+static long *root = NULL;  /*the root of the tree(unused blocks)*/
 
 /*Fuction not in head file*/
 static void *extend_heap(size_t words);
 
-static void insert(char *tree, char *place);  /*given the length of the clock ,insert it into the tree*/
-static void delete(char **tree);
+static void insert(long *tree, long *place);  /*given the length of the clock ,insert it into the tree*/
+static void delete(long **tree);
 
-static void *search(char *tree, size_t works);
+static void *search(long *tree, size_t works);
 
-static void place(void *bp, size_t asize);
+static void place(long *bp, size_t asize);
 
-static void *coalesce(void *ptr);
+static void *coalesce(long *ptr);
 
 /*
  * mm_init - initialize the malloc package.
@@ -104,24 +104,21 @@ int mm_init(void) {
     return 0;
 }
 
-/* 
+/*
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size) {
     size_t asize;      /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
-    char *bp;
+    long *bp;
 
     /* Ignore spurious requests */
     if (size <= 0)
         return NULL;
 
-    /* Adjust block size to include overhead and alignment reqs. */
-    if (size <= DSIZE)
-        asize = DSIZE + OVERHEAD;
-    else
-        asize = DSIZE * ((size + (OVERHEAD) + (DSIZE - 1)) / DSIZE);
+    asize=(size+7-(size+7)%8)+DSIZE;
+
 
     if ((bp = search(root, asize)) != NULL) {
         place(bp, asize);
@@ -140,14 +137,14 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *ptr) {
-    size_t size = GET_SIZE(HDRP(ptr));
-
-    PUT(HDRP(ptr), PACK(size, 0));
-    PUT(FTRP(ptr), PACK(size, 0));
-    ptr = coalesce(ptr);
-    SET_LCHILD(ptr, 0);
-    SET_RCHILD(ptr, 0);
-    insert(&root, ptr);
+//    PUT(HDRP(ptr), PACK(size, 0));
+//    PUT(FTRP(ptr), PACK(size, 0));
+    //ptr = coalesce(ptr);
+    long *temp=(long *)ptr;
+    size_t size = GET_SIZE(HDRP(temp));
+    SET_LCHILD(temp, 0);
+    SET_RCHILD(temp, 0);
+    insert(root, temp);
 }
 
 /*
@@ -173,48 +170,47 @@ void *mm_realloc(void *ptr, size_t size) {
 /*
  * coalesce - boundary tag coalescing. Return ptr to coalesced block
  */
-static void *coalesce(void *ptr) {
+static void *coalesce(long *ptr) {
     size_t size;
-    char *pr, *next;
-    char *temp;
+    long *pr, *next;
+    long *temp;
     pr = PREV_BLKP(ptr);
     next = NEXT_BLKP(ptr);
     /*if both behind block and behind block empty,three blocks coalesce*/
     if (pr > heap_listp && !GET_ALLOC(pr) && !GET_ALLOC(next)) {
         size = GET_SIZE(ptr) + GET_SIZE(pr) + GET_SIZE(next);
-        temp = PREV_BLKP((char *) ptr);
-        delete(&temp);
-        temp = NEXT_BLKP((char *) ptr);
+        delete(&pr);
+        temp = NEXT_BLKP((long *) ptr);
         delete(&temp);
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
         SET_LCHILD(pr, 0);
         SET_RCHILD(pr, 0);
-        insert(&root, pr);
+        insert(root, pr);
         return pr;
     }
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(pr)) {
         size = GET_SIZE(ptr) + GET_SIZE(pr);
-        temp = PREV_BLKP((char *) ptr);
+        temp = PREV_BLKP((long *) ptr);
         delete(&temp);
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(ptr), PACK(size, 0));
         SET_LCHILD(pr, 0);
         SET_RCHILD(pr, 0);
-        insert(&root, pr);
+        insert(root, pr);
         return pr;
     }
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(next)) {
         size = GET_SIZE(ptr) + GET_SIZE(next);
-        temp = NEXT_BLKP((char *) ptr);
+        temp = NEXT_BLKP((long *) ptr);
         delete(&temp);
         PUT(HDRP(ptr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
         SET_LCHILD(ptr, 0);
         SET_RCHILD(ptr, 0);
-        insert(&root, ptr);
+        insert(root, ptr);
     }
     return ptr;
 }
@@ -223,10 +219,10 @@ static void *coalesce(void *ptr) {
  * place - Place block of asize bytes at start of free block bp
  *         and split if remainder would be at least minimum block size
  */
-static void place(void *bp, size_t asize) {
+static void place(long *bp, size_t asize) {
     size_t csize = GET_SIZE(HDRP(bp));
 
-    if ((csize - asize) > (DSIZE + OVERHEAD)) {
+    if ((csize - asize) > (2*DSIZE)) {
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(HDRP(bp) + asize - WSIZE, PACK(asize, 1));
         bp = bp + asize;
@@ -245,35 +241,46 @@ static void place(void *bp, size_t asize) {
 /*
  * insert - Insert the unused block to the BST
  */
-void insert(char *tree, char *place) {
+void insert(long *tree, long *place) {
     static char flag = 0;
     if(root==NULL)
     {
         root=place;
         return ;
     }
-    if (GET_SIZE(*tree) > GET_SIZE(HDRP(place))) {
+    if (GET_SIZE(HDRP(tree)) > GET_SIZE(HDRP(place))) {
         if(*tree==NULL)
         {
             *tree=place;
             return ;
         }
         else
-        return insert((char *)*tree, place);
-    } else if (GET_SIZE(*tree) < GET_SIZE(HDRP(place))) {
+        return insert((long *)*tree, place);
+    } else if (GET_SIZE(HDRP(tree)) < GET_SIZE(HDRP(place))) {
         if(*(tree+CHILDSIZE)==NULL)
         {
             *(tree+CHILDSIZE)=place;
             return ;
         }
-        return insert((char *)*(tree + CHILDSIZE), place);
+        return insert(*(tree + CHILDSIZE), place);
     } else {
         flag = !flag;
         switch (flag) {
             case 0:
-                return insert((char *)*tree, place);
+                if(*tree==NULL)
+                {
+                    *tree=place;
+                    return ;
+                }
+                else
+                return insert((long *)*tree, place);
             case 1:
-                return insert((char *)(*tree + WSIZE), place);
+                if(*(tree+CHILDSIZE)==NULL)
+                {
+                    *(tree+CHILDSIZE)=place;
+                    return ;
+                }
+                return insert((long *)(*tree + WSIZE), place);
             default:;
         }
     }
@@ -282,11 +289,11 @@ void insert(char *tree, char *place) {
 /*
  * search - Search the specific length unused block in the BST
  */
-void *search(char *tree, size_t works) {
+void *search(long *tree, size_t works) {
     if (root == NULL)
         return NULL;
     if (*tree == NULL) {
-        void *temp;
+        long *temp;
         temp=tree;
         delete(&tree);
         return temp;
@@ -296,13 +303,13 @@ void *search(char *tree, size_t works) {
             delete(&tree);
             return tree;
         } else {
-            return search((char *) *tree, works);
+            return search((long *) *tree, works);
         }
     } else if (GET_SIZE(tree) < works) {
         if (*(tree + CHILDSIZE) == NULL) {
             return NULL;
         } else {
-            return search((char *) (*tree + CHILDSIZE), works);
+            return search((long *) (*tree + CHILDSIZE), works);
         }
     } else {
         delete(&tree);
@@ -313,23 +320,23 @@ void *search(char *tree, size_t works) {
 /*
  * delete - Delete the unused block in the BST
  */
-static void delete(char **tree) {
+static void delete(long **tree) {
     if (*tree == root) {
         root = NULL;
         return;
     }
     if (**tree == NULL && *(*tree + CHILDSIZE) == NULL) {
             *tree = NULL;
-    } else if (*tree == NULL) {
-        *tree = (char *) (*tree + CHILDSIZE);
-    } else if ((*tree + CHILDSIZE) == NULL) {
-        *tree = (char *) *tree;
+    } else if (**tree == NULL) {
+        *tree = (long *) (*tree + CHILDSIZE);
+    } else if (*(*tree + CHILDSIZE) == NULL) {
+        *tree = (long *) *tree;
     } else {
-        char *pr, *p;
-        pr = p = (char *) (*tree + CHILDSIZE);
+        long *pr, *p;
+        pr = p = (*tree + CHILDSIZE);
         while (*(p + CHILDSIZE)) {
             pr = p;
-            p = (char *) *(pr + CHILDSIZE);
+            p = *(p + CHILDSIZE);
         }
         if (pr != p) {
             *pr = *(p + CHILDSIZE);
@@ -343,7 +350,7 @@ static void delete(char **tree) {
  * extend_heap - Extend heap with free block and return its block pointer
  */
 static void *extend_heap(size_t words) {
-    char *bp;
+    long *bp;
     size_t size;
 
     /* Allocate an even number of words to maintain alignment */
@@ -352,7 +359,7 @@ static void *extend_heap(size_t words) {
         return NULL;
 
     /* Initialize free block header/footer and the epilogue header */
-    bp += DSIZE;
+    bp += WSIZE;
     PUT(HDRP(bp), PACK(size-WSIZE, 0));         /* free block header */
     PUT(FTRP(bp), PACK(size-WSIZE, 0));         /* free block footer */
     PUT(bp, 0);
