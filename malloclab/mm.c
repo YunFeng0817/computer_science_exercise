@@ -49,7 +49,8 @@ team_t team = {
 #define DSIZE       16       /* doubleword size (bytes) */
 #define CHILDSIZE   8       /* the child pointer size */
 #define CHUNKSIZE  (1<<16)  /* initial heap size (bytes) */
-#define OVERHEAD    8       /* overhead of header and footer (bytes) */
+#define LEFT    1
+#define RIGHT   0
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
 
@@ -65,22 +66,26 @@ team_t team = {
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 /* Given block ptr bp, compute address of its header and footer */
-#define HDRP(bp)       (bp - WSIZE)
-#define FTRP(bp)       (bp + GET_SIZE(HDRP(bp)) - DSIZE)
+#define HDRP(bp)       ((char *)bp - WSIZE)
+#define FTRP(bp)       ((char *)bp + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /*Given unused block ptr bp, get address of its left child and right child*/
 #define SET_LCHILD(bp, val)  (*(long*)(bp)=val)
-#define SET_RCHILD(bp, val)  (*(long*)(bp+CHILDSIZE)=val)
+#define SET_RCHILD(bp, val)  (*(long*)((char*)bp+CHILDSIZE)=val)
+#define GET_LCHILD(bp)      (long *)*((long *)(bp))
+#define GET_RCHILD(bp)      (long *)*((long *)((char*)bp+CHILDSIZE))
 
 /* Given block ptr bp, compute address of next and previous blocks */
-#define NEXT_BLKP(bp)  (bp + GET_SIZE(HDRP(bp)))
-#define PREV_BLKP(bp)  (bp - GET_SIZE((bp - DSIZE)))
+#define NEXT_BLKP(bp)  ((char *)bp + GET_SIZE(HDRP(bp)))
+#define PREV_BLKP(bp)  ((char *)bp - GET_SIZE(((char *)bp - DSIZE)))
 
 /* $end mallocmacros */
 
 /* Global variables */
 static long *heap_listp;  /* pointer to first block */
 static long *root = NULL;  /*the root of the tree(unused blocks)*/
+static long *pre_root = NULL;   /*storage the previous node of the BST node*/
+static char left_or_right;  /*storage the current node is left child or right child to its parent node*/
 
 /*Fuction not in head file*/
 static void *extend_heap(size_t words);
@@ -117,7 +122,7 @@ void *mm_malloc(size_t size) {
     if (size <= 0)
         return NULL;
 
-    asize=(size+7-(size+7)%8)+DSIZE;
+    asize = (size + 7 - (size + 7) % 8) + DSIZE;
 
 
     if ((bp = search(root, asize)) != NULL) {
@@ -140,10 +145,10 @@ void mm_free(void *ptr) {
 //    PUT(HDRP(ptr), PACK(size, 0));
 //    PUT(FTRP(ptr), PACK(size, 0));
     //ptr = coalesce(ptr);
-    long *temp=(long *)ptr;
+    long *temp = (long *) ptr;
     size_t size = GET_SIZE(HDRP(temp));
     SET_LCHILD(temp, 0);
-    PUT(temp+2,0);
+    SET_RCHILD(temp, 0);
     insert(root, temp);
 }
 
@@ -222,14 +227,14 @@ static void *coalesce(long *ptr) {
 static void place(long *bp, size_t asize) {
     size_t csize = GET_SIZE(HDRP(bp));
 
-    if ((csize - asize) > (2*DSIZE)) {
+    if ((csize - asize) > (2 * DSIZE)) {
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(HDRP(bp) + asize - WSIZE, PACK(asize, 1));
         bp = bp + asize;
         PUT(bp, PACK(csize - asize, 0));
         PUT(bp + csize - asize - WSIZE, PACK(csize - asize, 0));
         SET_LCHILD(bp + WSIZE, 0);
-        PUT(bp + WSIZE+CHILDSIZE, 0);
+        SET_RCHILD(bp + WSIZE, 0);
         bp += WSIZE;
         insert(root, bp);
     } else {
@@ -243,44 +248,37 @@ static void place(long *bp, size_t asize) {
  */
 void insert(long *tree, long *place) {
     static char flag = 0;
-    if(root==NULL)
-    {
-        root=place;
-        return ;
+    if (root == NULL) {
+        root = place;
+        return;
     }
     if (GET_SIZE(HDRP(tree)) > GET_SIZE(HDRP(place))) {
-        if(*tree==NULL)
-        {
-            *(long *)tree=(long)place;
-            return ;
-        }
-        else
-        return insert((long *)*tree, place);
+        if (GET_LCHILD(tree) == NULL) {
+            GET_LCHILD(tree) = (long) place;
+            return;
+        } else
+            return insert(GET_LCHILD(tree), place);
     } else if (GET_SIZE(HDRP(tree)) < GET_SIZE(HDRP(place))) {
-        if(*(tree+CHILDSIZE)==NULL)
-        {
-            *(tree+CHILDSIZE)=place;
-            return ;
+        if (GET_RCHILD(tree) == NULL) {
+            GET_RCHILD(tree) = place;
+            return;
         }
-        return insert(*(tree + CHILDSIZE), place);
+        return insert(GET_RCHILD(tree), place);
     } else {
         flag = !flag;
         switch (flag) {
             case 0:
-                if(*tree==NULL)
-                {
-                    *tree=place;
-                    return ;
-                }
-                else
-                return insert((long *)*tree, place);
+                if (*tree == NULL) {
+                    GET_LCHILD(tree) = place;
+                    return;
+                } else
+                    return insert(GET_LCHILD(tree), place);
             case 1:
-                if(*(tree+CHILDSIZE)==NULL)
-                {
-                    *(tree+CHILDSIZE)=place;
-                    return ;
+                if (GET_RCHILD(tree) == NULL) {
+                    GET_RCHILD(tree) = place;
+                    return;
                 }
-                return insert((long *)(*tree + WSIZE), place);
+                return insert(GET_RCHILD(tree), place);
             default:;
         }
     }
@@ -292,56 +290,93 @@ void insert(long *tree, long *place) {
 void *search(long *tree, size_t works) {
     if (root == NULL)
         return NULL;
-    if (*tree == NULL) {
+    pre_root=tree;
+    if (GET_LCHILD(tree) == NULL) {
         long *temp;
-        temp=tree;
-        delete(&tree);
+        temp = tree;
+        delete(tree);
         return temp;
     }
     if (GET_SIZE(tree) > works) {
-        if (*tree == NULL) {
-            delete(&tree);
+        if (GET_LCHILD(tree) == NULL) {
+            delete(tree);
             return tree;
         } else {
-            return search((long *) *tree, works);
+            left_or_right=LEFT;
+            return search(GET_LCHILD(tree), works);
         }
     } else if (GET_SIZE(tree) < works) {
-        if (*(tree + CHILDSIZE) == NULL) {
+        if (GET_RCHILD(tree) == NULL) {
             return NULL;
         } else {
-            return search((long *) (*tree + CHILDSIZE), works);
+            left_or_right=RIGHT;
+            return search(GET_RCHILD(tree), works);
         }
     } else {
-        delete(&tree);
-        return tree;
+        long *temp;
+        temp = tree;
+        delete(tree);
+        return temp;
     }
 }
 
 /*
  * delete - Delete the unused block in the BST
  */
-static void delete(long **tree) {
-    if (*tree == root) {
+static void delete(long *tree) {
+    if (tree == root) {
         root = NULL;
         return;
     }
-    if (**tree == NULL && *(*tree + CHILDSIZE) == NULL) {
-            *tree = NULL;
-    } else if (**tree == NULL) {
-        *tree = (long *) (*tree + CHILDSIZE);
-    } else if (*(*tree + CHILDSIZE) == NULL) {
-        *tree = (long *) *tree;
+    if (GET_LCHILD(tree) == NULL && GET_RCHILD(tree) == NULL) {
+        switch (left_or_right){
+            case LEFT:
+                GET_LCHILD(pre_root)=NULL;
+                break;
+            case RIGHT:
+                GET_RCHILD(pre_root)=NULL;
+            default:;
+        }
+    } else if (GET_LCHILD(tree) == NULL) {
+        switch(left_or_right){
+            case LEFT:
+                GET_LCHILD(pre_root)=GET_RCHILD(tree);
+                break;
+            case RIGHT:
+                GET_RCHILD(pre_root)=GET_RCHILD(tree);
+            default:;
+        }
+    } else if (GET_RCHILD(tree) == NULL) {
+        switch(left_or_right){
+            case LEFT:
+                GET_LCHILD(pre_root)=GET_LCHILD(tree);
+                break;
+            case RIGHT:
+                GET_RCHILD(pre_root)=GET_LCHILD(tree);
+            default:;
+        }
     } else {
         long *pr, *p;
-        pr = p = (*tree + CHILDSIZE);
-        while (*(p + CHILDSIZE)) {
+        pr = p = GET_RCHILD(tree);
+        while (GET_RCHILD(p)) {
             pr = p;
-            p = *(p + CHILDSIZE);
+            p = GET_RCHILD(p);
         }
+
         if (pr != p) {
-            *pr = *(p + CHILDSIZE);
+            GET_LCHILD(pr) = GET_RCHILD(p);
+            GET_LCHILD(p) = GET_LCHILD(tree);
+            GET_RCHILD(p) = GET_RCHILD(tree);
         } else {
-            *(*tree + CHILDSIZE) = *(p + CHILDSIZE);
+            GET_LCHILD(p) = GET_LCHILD(tree);
+        }
+        switch(left_or_right){
+            case LEFT:
+                GET_LCHILD(pre_root)=p;
+                break;
+            case RIGHT:
+                GET_RCHILD(pre_root)=p;
+            default:;
         }
     }
 }
@@ -360,12 +395,12 @@ static void *extend_heap(size_t words) {
 
     /* Initialize free block header/footer and the epilogue header */
     bp += WSIZE;
-    PUT(HDRP(bp), PACK(size-WSIZE, 0));         /* free block header */
-    PUT(FTRP(bp), PACK(size-WSIZE, 0));         /* free block footer */
+    PUT(HDRP(bp), PACK(size - WSIZE, 0));         /* free block header */
+    PUT(FTRP(bp), PACK(size - WSIZE, 0));         /* free block footer */
     PUT(bp, 0);
     PUT(bp + CHILDSIZE, 0);
-    if(root==NULL)
-        root=bp;
+    if (root == NULL)
+        root = bp;
     else
         insert(root, bp);
     /* Coalesce if the previous block was free */
