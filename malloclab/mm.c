@@ -79,9 +79,6 @@ int mm_init(void)
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
         return -1;
-#ifdef NEXT_FIT
-    rover = heap_listr;
-#endif
     return 0;
 }
 
