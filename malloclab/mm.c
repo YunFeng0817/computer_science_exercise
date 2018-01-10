@@ -91,6 +91,7 @@ static char left_or_right;  /*storage the current node is left child or right ch
 static void *extend_heap(size_t words);
 
 static void insert(long *tree, long *place);  /*given the length of the clock ,insert it into the tree*/
+
 static void delete(long *tree);
 
 static void *search(long *tree, size_t works);
@@ -98,6 +99,8 @@ static void *search(long *tree, size_t works);
 static void place(long *bp, size_t asize);
 
 static void *coalesce(long *ptr);
+
+static void delete_node(long *tree, long *place);
 
 /*
  * mm_init - initialize the malloc package.
@@ -130,8 +133,6 @@ void *mm_malloc(size_t size) {
         return bp;
     }
 
-    /* No fit found. Get more memory and place the block */
-    extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;
     place(bp, asize);
@@ -147,9 +148,12 @@ void mm_free(void *ptr) {
     //ptr = coalesce(ptr);
     long *temp = (long *) ptr;
     size_t size = GET_SIZE(HDRP(temp));
+    PUT(HDRP(temp), PACK(size, 0));
+    PUT(FTRP(temp), PACK(size, 0));
     SET_LCHILD(temp, 0);
     SET_RCHILD(temp, 0);
-    insert(root, temp);
+    insert(root,temp);
+//    coalesce(temp);
 }
 
 /*
@@ -178,15 +182,14 @@ void *mm_realloc(void *ptr, size_t size) {
 static void *coalesce(long *ptr) {
     size_t size;
     long *pr, *next;
-    long *temp;
-    pr = PREV_BLKP(ptr);
-    next = NEXT_BLKP(ptr);
+    size_t temp = GET_SIZE(((char *) ptr - DSIZE));
+    pr = (long *) PREV_BLKP(ptr);
+    next = (long *) NEXT_BLKP(ptr);
     /*if both behind block and behind block empty,three blocks coalesce*/
     if (pr > heap_listp && !GET_ALLOC(pr) && !GET_ALLOC(next)) {
-        size = GET_SIZE(ptr) + GET_SIZE(pr) + GET_SIZE(next);
-        delete(&pr);
-        temp = NEXT_BLKP((long *) ptr);
-        delete(&temp);
+        size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(pr)) + GET_SIZE(HDRP(next));
+        delete_node(root, pr);
+        delete_node(root, next);
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
         SET_LCHILD(pr, 0);
@@ -196,9 +199,8 @@ static void *coalesce(long *ptr) {
     }
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(pr)) {
-        size = GET_SIZE(ptr) + GET_SIZE(pr);
-        temp = PREV_BLKP((long *) ptr);
-        delete(&temp);
+        size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(pr));
+        delete_node(root, pr);
         PUT(HDRP(pr), PACK(size, 0));
         PUT(FTRP(ptr), PACK(size, 0));
         SET_LCHILD(pr, 0);
@@ -208,15 +210,15 @@ static void *coalesce(long *ptr) {
     }
         /*only behind block empty,two blocks coalesce*/
     else if (!GET_ALLOC(next)) {
-        size = GET_SIZE(ptr) + GET_SIZE(next);
-        temp = NEXT_BLKP((long *) ptr);
-        delete(&temp);
+        size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(next));
+        delete_node(root, next);
         PUT(HDRP(ptr), PACK(size, 0));
         PUT(FTRP(next), PACK(size, 0));
         SET_LCHILD(ptr, 0);
         SET_RCHILD(ptr, 0);
         insert(root, ptr);
-    }
+    } else
+        insert(root, ptr);
     return ptr;
 }
 
@@ -226,17 +228,17 @@ static void *coalesce(long *ptr) {
  */
 static void place(long *bp, size_t asize) {
     size_t csize = GET_SIZE(HDRP(bp));
+    long *rest;
 
     if ((csize - asize) > (2 * DSIZE)) {
         PUT(HDRP(bp), PACK(asize, 1));
-        PUT(HDRP(bp) + asize - WSIZE, PACK(asize, 1));
-        bp = bp + asize;
-        PUT(bp, PACK(csize - asize, 0));
-        PUT(bp + csize - asize - WSIZE, PACK(csize - asize, 0));
-        SET_LCHILD(bp + WSIZE, 0);
-        SET_RCHILD(bp + WSIZE, 0);
-        bp += WSIZE;
-        insert(root, bp);
+        PUT((char *) HDRP(bp) + asize - WSIZE, PACK(asize, 1));
+        rest = (char*)bp + asize;
+        PUT(HDRP(rest), PACK(csize - asize, 0));
+        PUT(FTRP(rest), PACK(csize - asize, 0));
+        SET_LCHILD(rest, 0);
+        SET_RCHILD(rest, 0);
+        insert(root, rest);
     } else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
@@ -253,12 +255,14 @@ void insert(long *tree, long *place) {
         return;
     }
     if (GET_SIZE(HDRP(tree)) > GET_SIZE(HDRP(place))) {
+        flag = 0;
         if (GET_LCHILD(tree) == NULL) {
-            GET_LCHILD(tree) =  place;
+            GET_LCHILD(tree) = place;
             return;
         } else
             return insert(GET_LCHILD(tree), place);
     } else if (GET_SIZE(HDRP(tree)) < GET_SIZE(HDRP(place))) {
+        flag = 0;
         if (GET_RCHILD(tree) == NULL) {
             GET_RCHILD(tree) = place;
             return;
@@ -290,26 +294,23 @@ void insert(long *tree, long *place) {
 void *search(long *tree, size_t works) {
     if (root == NULL)
         return NULL;
-    pre_root=tree;
-    if (GET_LCHILD(tree) == NULL) {
-        long *temp;
-        temp = tree;
-        delete(tree);
-        return temp;
-    }
-    if (GET_SIZE(tree) > works) {
+    if (GET_SIZE(HDRP(tree)) > works) {
         if (GET_LCHILD(tree) == NULL) {
+            long *temp;
+            temp=*tree;
             delete(tree);
-            return tree;
+            return temp;
         } else {
-            left_or_right=LEFT;
+            left_or_right = LEFT;
+            pre_root = tree;
             return search(GET_LCHILD(tree), works);
         }
-    } else if (GET_SIZE(tree) < works) {
+    } else if (GET_SIZE(HDRP(tree)) < works) {
         if (GET_RCHILD(tree) == NULL) {
             return NULL;
         } else {
-            left_or_right=RIGHT;
+            left_or_right = RIGHT;
+            pre_root = tree;
             return search(GET_RCHILD(tree), works);
         }
     } else {
@@ -329,30 +330,30 @@ static void delete(long *tree) {
         return;
     }
     if (GET_LCHILD(tree) == NULL && GET_RCHILD(tree) == NULL) {
-        switch (left_or_right){
+        switch (left_or_right) {
             case LEFT:
-                GET_LCHILD(pre_root)=NULL;
+                GET_LCHILD(pre_root) = NULL;
                 break;
             case RIGHT:
-                GET_RCHILD(pre_root)=NULL;
+                GET_RCHILD(pre_root) = NULL;
             default:;
         }
     } else if (GET_LCHILD(tree) == NULL) {
-        switch(left_or_right){
+        switch (left_or_right) {
             case LEFT:
-                GET_LCHILD(pre_root)=GET_RCHILD(tree);
+                GET_LCHILD(pre_root) = GET_RCHILD(tree);
                 break;
             case RIGHT:
-                GET_RCHILD(pre_root)=GET_RCHILD(tree);
+                GET_RCHILD(pre_root) = GET_RCHILD(tree);
             default:;
         }
     } else if (GET_RCHILD(tree) == NULL) {
-        switch(left_or_right){
+        switch (left_or_right) {
             case LEFT:
-                GET_LCHILD(pre_root)=GET_LCHILD(tree);
+                GET_LCHILD(pre_root) = GET_LCHILD(tree);
                 break;
             case RIGHT:
-                GET_RCHILD(pre_root)=GET_LCHILD(tree);
+                GET_RCHILD(pre_root) = GET_LCHILD(tree);
             default:;
         }
     } else {
@@ -370,15 +371,16 @@ static void delete(long *tree) {
         } else {
             GET_LCHILD(p) = GET_LCHILD(tree);
         }
-        switch(left_or_right){
+        switch (left_or_right) {
             case LEFT:
-                GET_LCHILD(pre_root)=p;
+                GET_LCHILD(pre_root) = p;
                 break;
             case RIGHT:
-                GET_RCHILD(pre_root)=p;
+                GET_RCHILD(pre_root) = p;
             default:;
         }
     }
+    pre_root=root;
 }
 
 /*
@@ -405,4 +407,37 @@ static void *extend_heap(size_t words) {
         insert(root, bp);
     /* Coalesce if the previous block was free */
     return bp;
+}
+
+void delete_node(long *tree, long *place) {
+    static char flag = 0;
+    if (root == place) {
+        root = NULL;
+        return;
+    }
+    pre_root = tree;
+    if (GET_SIZE(HDRP(tree)) > GET_SIZE(HDRP(place))) {
+        flag = 0;
+        left_or_right = LEFT;
+        return delete_node((long *) GET_LCHILD(tree), place);
+    } else if (GET_SIZE(HDRP(tree)) < GET_SIZE(HDRP(place))) {
+        flag = 0;
+        left_or_right = RIGHT;
+        return delete_node((long *) GET_RCHILD(tree), place);
+    } else {
+        if (tree == place)
+            delete(place);
+        else {
+            flag = !flag;
+            switch (flag) {
+                case 0:
+                    left_or_right = LEFT;
+                    return delete_node((long *) GET_LCHILD(tree), place);
+                case 1:
+                    left_or_right = RIGHT;
+                    return delete_node((long *) GET_RCHILD(tree), place);
+                default:;
+            }
+        }
+    }
 }
