@@ -48,7 +48,7 @@ team_t team = {
 #define WSIZE       8       /* word size (bytes) */
 #define DSIZE       16       /* doubleword size (bytes) */
 #define CHILDSIZE   8       /* the child pointer size */
-#define CHUNKSIZE  (1<<20)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<15)  /* initial heap size (bytes) */
 #define LEFT    1
 #define RIGHT   0
 
@@ -133,7 +133,7 @@ void *mm_malloc(size_t size) {
         return bp;
     }
 
-    if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
+    if ((bp = extend_heap(size / WSIZE)) == NULL)
         return NULL;
     place(bp, asize);
     return bp;
@@ -294,10 +294,12 @@ void insert(long *tree, long *place) {
 void *search(long *tree, size_t works) {
     if (root == NULL)
         return NULL;
+    if(tree==root)
+        pre_root=root;
     if (GET_SIZE(HDRP(tree)) > works) {
         if (GET_LCHILD(tree) == NULL) {
             long *temp;
-            temp=*tree;
+            temp=tree;
             delete(tree);
             return temp;
         } else {
@@ -307,6 +309,12 @@ void *search(long *tree, size_t works) {
         }
     } else if (GET_SIZE(HDRP(tree)) < works) {
         if (GET_RCHILD(tree) == NULL) {
+            if(pre_root!=NULL){
+                long *temp;
+                temp=pre_root;
+                delete_node(root,pre_root);
+                return temp;
+            }
             return NULL;
         } else {
             left_or_right = RIGHT;
@@ -403,8 +411,6 @@ static void *extend_heap(size_t words) {
     PUT(bp + CHILDSIZE, 0);
     if (root == NULL)
         root = bp;
-    else
-        insert(root, bp);
     /* Coalesce if the previous block was free */
     return bp;
 }
@@ -415,14 +421,15 @@ void delete_node(long *tree, long *place) {
         root = NULL;
         return;
     }
-    pre_root = tree;
     if (GET_SIZE(HDRP(tree)) > GET_SIZE(HDRP(place))) {
         flag = 0;
         left_or_right = LEFT;
+        pre_root = tree;
         return delete_node((long *) GET_LCHILD(tree), place);
     } else if (GET_SIZE(HDRP(tree)) < GET_SIZE(HDRP(place))) {
         flag = 0;
         left_or_right = RIGHT;
+        pre_root = tree;
         return delete_node((long *) GET_RCHILD(tree), place);
     } else {
         if (tree == place)
@@ -440,4 +447,5 @@ void delete_node(long *tree, long *place) {
             }
         }
     }
+    pre_root=root;
 }
