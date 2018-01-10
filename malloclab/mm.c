@@ -48,7 +48,7 @@ team_t team = {
 #define WSIZE       8       /* word size (bytes) */
 #define DSIZE       16       /* doubleword size (bytes) */
 #define CHILDSIZE   8       /* the child pointer size */
-#define CHUNKSIZE  (1<<16)  /* initial heap size (bytes) */
+#define CHUNKSIZE  (1<<20)  /* initial heap size (bytes) */
 #define LEFT    1
 #define RIGHT   0
 
@@ -72,8 +72,8 @@ team_t team = {
 /*Given unused block ptr bp, get address of its left child and right child*/
 #define SET_LCHILD(bp, val)  (*(long*)(bp)=val)
 #define SET_RCHILD(bp, val)  (*(long*)((char*)bp+CHILDSIZE)=val)
-#define GET_LCHILD(bp)      (long *)*((long *)(bp))
-#define GET_RCHILD(bp)      (long *)*((long *)((char*)bp+CHILDSIZE))
+#define GET_LCHILD(bp)      *((long *)(bp))
+#define GET_RCHILD(bp)      *((long *)((char*)bp+CHILDSIZE))
 
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp)  ((char *)bp + GET_SIZE(HDRP(bp)))
@@ -91,7 +91,7 @@ static char left_or_right;  /*storage the current node is left child or right ch
 static void *extend_heap(size_t words);
 
 static void insert(long *tree, long *place);  /*given the length of the clock ,insert it into the tree*/
-static void delete(long **tree);
+static void delete(long *tree);
 
 static void *search(long *tree, size_t works);
 
@@ -254,7 +254,7 @@ void insert(long *tree, long *place) {
     }
     if (GET_SIZE(HDRP(tree)) > GET_SIZE(HDRP(place))) {
         if (GET_LCHILD(tree) == NULL) {
-            GET_LCHILD(tree) = (long) place;
+            GET_LCHILD(tree) =  place;
             return;
         } else
             return insert(GET_LCHILD(tree), place);
@@ -406,13 +406,3 @@ static void *extend_heap(size_t words) {
     /* Coalesce if the previous block was free */
     return bp;
 }
-
-
-
-
-
-
-
-
-
-
