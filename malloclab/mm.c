@@ -64,9 +64,7 @@ static void *coalesce(void *bp);
 
 static void checkblock(void *bp);
 
-static void printblock(void *bp);
-
-static void mm_check(int verbose);
+static void mm_check(void);
 
 /*
  * mm_init - Initialize the memory manager
@@ -178,7 +176,6 @@ static void *extend_heap(size_t words) {
  *         and split if remainder would be at least minimum block size
  */
 static void place(void *bp, size_t asize)
-/* $end mmplace-proto */
 {
     size_t csize = GET_SIZE(HDRP(bp));
 
@@ -190,6 +187,7 @@ static void place(void *bp, size_t asize)
     if (NEXT_FREE_BLKP(bp))
         SET_PREVP(NEXT_FREE_BLKP(bp), PREV_FREE_BLKP(bp));
 
+    /* if the rest block is big enough,cut them,else,just place all*/
     if ((csize - asize) >= (DSIZE + OVERHEAD)) {
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
@@ -226,14 +224,14 @@ static void *coalesce(void *bp) {
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
-    if (prev_alloc && next_alloc) {            /* Case 1 */
+    if (prev_alloc && next_alloc) {            /* Case pre and next both used */
         /* set new head */
         SET_NEXTP(bp, heap_listr);
         if (heap_listr != 0)
             SET_PREVP(heap_listr, bp);
         SET_PREVP(bp, 0);
         heap_listr = bp;
-    } else if (prev_alloc) {      /* Case 2 */
+    } else if (prev_alloc) {      /* Case only pre used */
         bp = NEXT_BLKP(bp);
         /* remove block from free list */
         if (PREV_FREE_BLKP(bp))
@@ -255,7 +253,7 @@ static void *coalesce(void *bp) {
             SET_PREVP(heap_listr, bp);
         SET_PREVP(bp, 0);
         heap_listr = bp;
-    } else if (next_alloc) {      /* Case 3 */
+    } else if (next_alloc) {      /* Case only next used */
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         bp = PREV_BLKP(bp);
 
@@ -277,7 +275,7 @@ static void *coalesce(void *bp) {
             SET_PREVP(heap_listr, bp);
         SET_PREVP(bp, 0);
         heap_listr = bp;
-    } else {                                     /* Case 4 */
+    } else {                                     /* Case pre and next both used */
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) +
                 GET_SIZE(FTRP(NEXT_BLKP(bp)));
 
@@ -314,51 +312,29 @@ static void *coalesce(void *bp) {
 }
 
 /*
- * mm_checkheap - Check the heap for consistency
+ * mm_check - Check the heap for consistency
  */
-void mm_check(int verbose) {
+void mm_check(void) {
     char *bp = heap_listp;
-
-    if (verbose)
-        printf("Heap (%p):\n", heap_listp);
 
     if ((GET_SIZE(HDRP(heap_listp)) != DSIZE) || !GET_ALLOC(HDRP(heap_listp)))
         printf("Bad prologue header\n");
     checkblock(heap_listp);
 
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-        if (verbose)
-            printblock(bp);
-        checkblock(bp);
+        checkblock(bp);   /* check if the block place align to 8*/
     }
 
-    if (verbose)
-        printblock(bp);
     if ((GET_SIZE(HDRP(bp)) != 0) || !(GET_ALLOC(HDRP(bp))))
         printf("Bad epilogue header\n");
 }
 
+/*
+ * checkblock - Check if the block place has aligned to 8
+ */
 void checkblock(void *bp) {
     if ((size_t) bp % 8)
         printf("Error: %p is not doubleword aligned\n", bp);
     if (GET(HDRP(bp)) != GET(FTRP(bp)))
         printf("Error: header does not match footer\n");
-}
-
-void printblock(void *bp) {
-    size_t hsize, halloc, fsize, falloc;
-
-    hsize = GET_SIZE(HDRP(bp));
-    halloc = GET_ALLOC(HDRP(bp));
-    fsize = GET_SIZE(FTRP(bp));
-    falloc = GET_ALLOC(FTRP(bp));
-
-    if (hsize == 0) {
-        printf("%p: EOL\n", bp);
-        return;
-    }
-
-    printf("%p: header: [%d:%c] footer: [%d:%c]\n", bp,
-           (int) hsize, (halloc ? 'a' : 'f'),
-           (int) fsize, (falloc ? 'a' : 'f'));
 }
